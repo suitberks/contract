@@ -2,7 +2,7 @@ import { Command, Option } from 'clipanion';
 
 import { publishContractPackage } from './publish.services';
 
-/** CLI command that publishes prepared contract package to npm. */
+/** CLI command that publishes a prepared contract package to its configured registry. */
 export class PublishPackageCommand extends Command {
   static override paths = [['publish:package']];
 

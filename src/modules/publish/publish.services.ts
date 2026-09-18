@@ -4,19 +4,24 @@ import { getConfig, handleEnvironment } from '@/environment/environment.services
 import { prepareContractPackage } from '@/modules/prepare/prepare.services';
 import { executeCommandWithResult } from '@/utilities/execution.utilities';
 
-import { removeNpmRc, resolveNpmToken, writeNpmRc } from './publish.auth';
+import {
+  removeRegistryConfig,
+  resolvePackageRegistry,
+  resolveRegistryToken,
+  writeRegistryConfig,
+} from './publish.auth';
 import { getPublishFailureMessage } from './publish.errors';
 import {
   fatalErrorWhilePublishingMessage,
-  npmTokenMissingMessage,
   packageDirectoryNotFoundMessage,
   packageJsonNotFoundMessage,
   packagePreparationStartedMessage,
   publishSpinnerCompletedMessage,
   publishSpinnerFailedMessage,
   publishSpinnerStartedMessage,
+  registryTokenMissingMessage,
 } from './publish.messages';
-import { assertVersionAvailableOnNpm } from './publish.registry';
+import { assertVersionAvailable } from './publish.registry';
 import {
   ensurePublishPathsExist,
   readPackageJsonInfo,
@@ -24,7 +29,7 @@ import {
   syncPackageJsonVersion,
 } from './publish.validation';
 
-/** Publishes prepared contract package artifacts to npm with auth and validation checks. */
+/** Publishes prepared contract package artifacts to the configured npm-compatible registry. */
 export async function publishContractPackage(options: { access?: string; prepare?: boolean } = {}): Promise<void> {
   let packageDirForCleanup: string | null = null;
   let publishSpinner: ReturnType<typeof spinner> | null = null;
@@ -68,40 +73,45 @@ export async function publishContractPackage(options: { access?: string; prepare
 
     const packageJson = await readPackageJsonInfo(paths.packageJsonPath);
     const packageName = packageJson.name;
+    const registry = resolvePackageRegistry(config);
 
-    // Step 4: Enforce config version as source-of-truth for publish.
-    const packageVersion = config.package.version;
-    await assertVersionAvailableOnNpm(packageName, packageVersion);
-    await syncPackageJsonVersion(paths.packageJsonPath, packageJson, packageVersion);
-
-    // Step 5: Resolve npm auth and write local .npmrc for publish.
-    const npmToken = resolveNpmToken(config);
-    if (!npmToken) {
-      npmTokenMissingMessage();
+    // Step 4: Resolve registry authentication before any remote registry operation.
+    const registryToken = resolveRegistryToken(config);
+    if (!registryToken) {
+      registryTokenMissingMessage();
       process.exitCode = 1;
       return;
     }
 
-    // Step 6: Show compact publish progress and write auth config.
+    await writeRegistryConfig(paths.packageDir, packageName, registry, registryToken.token);
+
+    // Step 5: Enforce config version as source-of-truth for the selected registry.
+    const packageVersion = config.package.version;
+    await assertVersionAvailable(packageName, packageVersion, registry, paths.packageDir);
+    await syncPackageJsonVersion(paths.packageJsonPath, packageJson, packageVersion);
+
+    // Step 6: Show compact publish progress after every preflight check succeeds.
     publishSpinner = spinner();
-    publishSpinner.start(publishSpinnerStartedMessage(packageName, packageVersion));
+    publishSpinner.start(publishSpinnerStartedMessage(packageName, packageVersion, registry.url));
 
-    await writeNpmRc(paths.packageDir, npmToken.token);
-
-    // Step 6: Validate CLI options and execute npm publish.
+    // Step 7: Validate CLI options and execute package publication.
     if (options.access && options.access !== 'public') {
       throw new Error('Only --access public is supported for contract publish:package.');
     }
 
-    const publishResult = await executeCommandWithResult('npm', ['publish', '--access', 'public'], paths.packageDir);
+    const publishResult = await executeCommandWithResult(
+      'npm',
+      ['publish', '--access', 'public', '--registry', registry.url],
+      paths.packageDir
+    );
 
-    // Step 7: Treat only non-zero exit as failure; npm notice in stderr is allowed.
+    // Step 8: Treat only non-zero exit as failure; npm notice in stderr is allowed.
     if (!publishResult.success) {
       const errorOutput = publishResult.stderr || publishResult.stdout || publishResult.errorMessage || 'Unknown error';
       throw new Error(getPublishFailureMessage(errorOutput));
     }
 
-    // Step 8: Report success in the same progress line.
+    // Step 9: Report success in the same progress line.
     publishSpinner.stop(publishSpinnerCompletedMessage(packageName, packageVersion));
   } catch (error) {
     if (publishSpinner) {
@@ -113,7 +123,7 @@ export async function publishContractPackage(options: { access?: string; prepare
     process.exitCode = 1;
   } finally {
     if (packageDirForCleanup) {
-      await removeNpmRc(packageDirForCleanup);
+      await removeRegistryConfig(packageDirForCleanup);
     }
   }
 }

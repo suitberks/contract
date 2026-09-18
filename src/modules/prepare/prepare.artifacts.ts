@@ -30,7 +30,7 @@ function generatePackageJson(config: Config, contracts: string[]): Record<string
 
   const files = ['index.d.ts', 'index.js', ...contracts.flatMap((c) => [`${c}.d.ts`, `${c}.js`])];
 
-  return {
+  const packageJson: Record<string, unknown> = {
     name: config.package.name,
     description: `Shared TypeScript contract definitions for ${config.app}.`,
     version: config.package.version,
@@ -41,6 +41,22 @@ function generatePackageJson(config: Config, contracts: string[]): Record<string
     exports,
     types: './index.d.ts',
   };
+
+  if (config.package.repository) {
+    packageJson.repository = {
+      type: 'git',
+      url: config.package.repository,
+    };
+  }
+
+  if (config.registry) {
+    packageJson.publishConfig = {
+      access: 'public',
+      registry: config.registry.url,
+    };
+  }
+
+  return packageJson;
 }
 
 /** Generates index declaration that re-exports contract types and emitted runtime values. */

@@ -1,5 +1,5 @@
 {
-  "name": "@kalutskii/contract",
+  "name": "@suitberks/contract",
   "version": "2.0.2",
   "description": "TypeScript contract library for generating, versioning, and distributing type definitions across services.",
   "repository": {
@@ -17,7 +17,8 @@
     ".": "./dist/index.js"
   },
   "publishConfig": {
-    "access": "public"
+    "access": "public",
+    "registry": "https://npm.pkg.github.com"
   },
   "scripts": {
     "build": "tsdown",

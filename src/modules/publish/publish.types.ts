@@ -4,8 +4,13 @@ export interface PackageJsonInfo {
   version?: string;
 }
 
-/** Resolved npm token and where it came from. */
-export interface ResolvedNpmToken {
+/** NPM-compatible registry target used by package inspection and publication. */
+export interface PackageRegistry {
+  url: string;
+}
+
+/** Resolved package registry token and where it came from. */
+export interface ResolvedRegistryToken {
   source: string;
   token: string;
 }

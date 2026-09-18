@@ -1,25 +1,34 @@
-# contract
+# @suitberks/contract
 
-A TypeScript CLI tool for building contract packages that define shared types and interfaces for distribution via npm.
+A TypeScript CLI for building contract packages that define shared types and interfaces for npm-compatible registries.
 
-Instead of syncing contracts over HTTP between services, this library generates publishable npm packages containing bundled TypeScript type definitions. Services consume these packages via standard package managers.
+Instead of syncing contracts over HTTP between services, this library generates publishable packages containing bundled TypeScript type definitions. Services consume these packages through standard JavaScript package managers.
 
 ---
 
 ## Installation
 
 ```bash
-# npm / yarn / pnpm
-npm install -g @kalutskii/contract
+# Configure GitHub Packages authentication before installation.
+npm install -g @suitberks/contract
 
 # bun
-bun add -g @kalutskii/contract
+bun add -g @suitberks/contract
 ```
 
 Or run without installing:
 
 ```bash
-bunx @kalutskii/contract <command>
+bunx @suitberks/contract <command>
+```
+
+GitHub Packages requires authentication even for public npm packages. Configure the personal scope once before
+installing the CLI:
+
+```toml
+# bunfig.toml
+[install.scopes]
+"@suitberks" = { token = "$PACKAGES_READ_TOKEN", url = "https://npm.pkg.github.com" }
 ```
 
 > Requires `typescript >= 5.9` and `jiti >= 2.6` as peer dependencies.
@@ -145,9 +154,9 @@ Creates a `.tgz` archive of the prepared package in `contract/package/`.
 bunx contract publish:package
 ```
 
-Publishes the prepared package to npm. The CLI writes `.npmrc` inside `contract/package` and publishes with public access enabled.
+Publishes the prepared package to the configured npm-compatible registry. The CLI writes a temporary `.npmrc` inside `contract/package`, uses it for registry inspection and publication, and removes it afterwards.
 
-If the current version already exists on npm, publishing fails with a clear message and you should run:
+If the current version already exists in the configured registry, publishing fails and you should run:
 
 ```bash
 bunx contract prepare:package --bump patch
@@ -155,9 +164,10 @@ bunx contract prepare:package --bump patch
 
 **Token priority:**
 
-1. `config.npm.token`
-2. `NPM_TOKEN`
+1. `config.registry.token`
+2. `PACKAGE_REGISTRY_TOKEN`
 3. `NODE_AUTH_TOKEN`
+4. `NPM_TOKEN` for backward-compatible npmjs environments
 
 The package can also be prepared and published in one step:
 
@@ -174,18 +184,20 @@ The `--prepare` flag will rebuild the package before publishing.
 `contract.config.ts`:
 
 ```typescript
-import type { Config } from 'contract';
+import type { Config } from '@suitberks/contract';
 
 const contractConfig: Config = {
   app: 'admin-service',
   contracts: ['api', 'types', 'events'],
   emit: ['events'],
   package: {
-    name: '@company-contracts/admin-service',
+    name: '@esb-group-space/admin-service-contracts',
     version: '1.0.0',
+    repository: 'https://github.com/esb-group-space/admin-service.git',
   },
-  npm: {
-    token: process.env.NPM_TOKEN ?? '',
+  registry: {
+    url: 'https://npm.pkg.github.com',
+    token: process.env.PACKAGE_REGISTRY_TOKEN,
   },
 };
 
@@ -197,10 +209,15 @@ export default contractConfig;
 - `app` - Service/app name (used in generated filenames)
 - `contracts` - List of contract names to generate
 - `emit` - Subset of contracts that should also publish runtime JavaScript
-- `package.name` - NPM package name
+- `package.name` - Scoped package name accepted by the selected registry
 - `package.version` - Semantic version
+- `package.repository` - (Optional) Source repository associated with the published package
 - `package.exports` - (Optional) Custom export field configuration
-- `npm.token` - (Optional) NPM auth token used for publishing
+- `registry.url` - (Optional) NPM-compatible registry URL; defaults to `https://registry.npmjs.org`
+- `registry.token` - (Optional) Registry token used for inspection and publication
+
+GitHub Packages requires the package scope to match the owning user or organization. A package published by
+`esb-group-space` must therefore use a name such as `@esb-group-space/office-backend-contracts`.
 
 ---
 
@@ -211,9 +228,9 @@ export default contractConfig;
 | `contract init`               | Initialize contract environment and create default config |
 | `contract update:environment` | Update directories and manifests based on current config  |
 | `contract build`              | Bundle manifest files into `.d.ts` declarations           |
-| `contract prepare:package`    | Generate publishable npm package directory                |
+| `contract prepare:package`    | Generate a publishable package directory                  |
 | `contract pack:package`       | Pack prepared package into a `.tgz` archive               |
-| `contract publish:package`    | Publish package to npm using config/env token             |
+| `contract publish:package`    | Publish to the configured registry using config/env auth  |
 
 ---
 
@@ -228,7 +245,7 @@ contract/
   │   ├── app.contract.api.d.ts
   │   ├── app.contract.events.js
   │   └── app.contract.types.d.ts
-  └── package/          # Publishable npm package (output)
+  └── package/          # Publishable package (output)
       ├── package.json
       ├── index.d.ts
       ├── index.js
@@ -265,21 +282,21 @@ const user: UserCreateRequest = {
 
 bunx contract update:environment   # Sync manifest files
 bunx contract build                # Generate .d.ts from manifests
-bunx contract prepare:package      # Create npm package (auto-versions if content changed)
-bunx contract publish:package      # Publish to npm
+bunx contract prepare:package      # Create package (auto-versions if content changed)
+bunx contract publish:package      # Publish to configured registry
 ```
 
 **Versioning behavior:**
 
 - `prepare:package` detects content changes and bumps patch version automatically
-- `publish:package` checks whether target version already exists on npm
+- `publish:package` checks whether the target version already exists in the configured registry
 - if version exists, publish fails and asks for manual bump (`--bump patch|minor|major`)
 - Use `--bump major|minor` to manually override during prepare
 - Use `--no-bump` to disable automatic bumping
 
 **Requirements:**
 
-- provide `npm.token` in `contract.config.ts`, or set `NPM_TOKEN` / `NODE_AUTH_TOKEN`
+- provide `registry.token` in `contract.config.ts`, or set `PACKAGE_REGISTRY_TOKEN` / `NODE_AUTH_TOKEN`
 
 ### Consumer Service (uses contracts)
 
@@ -296,13 +313,13 @@ import type * as AdminAPI from '@company-contracts/admin-service/api';
 ## Notes
 
 - This library is **local-only** — it does not perform remote synchronization or automatic publishing
-- Publishing uses a temporary `.npmrc` in `contract/package` from `config.npm.token`, `NPM_TOKEN`, or `NODE_AUTH_TOKEN` and removes it after the publish attempt
+- Publishing uses a temporary `.npmrc` in `contract/package`, targets `config.registry.url`, and removes authentication after every attempt
 - Contract manifests can export runtime values for contracts listed in `emit`
 - For `emit`, import or re-export from direct leaf files instead of barrels or service modules with broader dependency graphs
 - Use `contract update:environment` to regenerate missing files (e.g., after adding new contracts)
-- Versions are automatically managed based on content changes and npm registry state
+- Versions are automatically managed based on content changes and configured registry state
 - Content hash is stored in `contract/.contract-package-state.json` for change detection
-- If npm version already exists, bump version manually via `contract prepare:package --bump ...`
+- If the package version already exists, bump it manually via `contract prepare:package --bump ...`
 
 ---
 
@@ -316,7 +333,7 @@ import type * as AdminAPI from '@company-contracts/admin-service/api';
 ### Setup
 
 ```bash
-git clone https://github.com/kalutskii/contract.git
+git clone https://github.com/suitberks/contract.git
 cd contract
 bun install
 ```

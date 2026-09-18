@@ -3,7 +3,7 @@
   "configVersion": 1,
   "workspaces": {
     "": {
-      "name": "@kalutskii/contract",
+      "name": "@suitberks/contract",
       "dependencies": {
         "@clack/prompts": "^1.7.0",
         "clipanion": "^4.0.0-rc.4",

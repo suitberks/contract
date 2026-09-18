@@ -8,10 +8,12 @@ export interface Config {
   package: {
     name: string;
     version: string;
+    repository?: string;
     exports?: Record<string, string>;
   };
-  npm?: {
-    token: string;
+  registry?: {
+    url: string;
+    token?: string;
   };
 }
 
@@ -33,23 +35,28 @@ export const ConfigSchema: z.ZodType<Config> = z
       .meta({ description: 'Subset of contracts that should also emit runtime JavaScript artifacts.' }),
     package: z
       .object({
-        name: z.string().meta({ description: 'NPM package name, e.g. @scope/package-name' }),
+        name: z.string().meta({ description: 'Scoped package name, e.g. @scope/package-name' }),
         version: z
           .string()
           .regex(/^\d+\.\d+\.\d+/)
           .meta({ description: 'Semantic version, e.g. 1.0.0' }),
+        repository: z
+          .url()
+          .optional()
+          .meta({ description: 'Optional source repository associated with the published package.' }),
         exports: z
           .record(z.string(), z.string())
           .optional()
           .meta({ description: 'Optional package exports configuration.' }),
       })
       .meta({ description: 'Package metadata for contract distribution.' }),
-    npm: z
+    registry: z
       .object({
-        token: z.string().meta({ description: 'NPM authentication token used for publishing.' }),
+        url: z.url().meta({ description: 'NPM-compatible registry URL used for package publication.' }),
+        token: z.string().optional().meta({ description: 'Optional registry token used for package publication.' }),
       })
       .optional()
-      .meta({ description: 'Optional npm publishing configuration.' }),
+      .meta({ description: 'Optional package registry configuration.' }),
   })
   .superRefine((config, context) => {
     const contractNames = new Set(config.contracts);

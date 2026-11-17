@@ -35,7 +35,7 @@ export default contractConfig;
 
 /** Renders a contract manifest template source file for the selected contract. */
 export const renderManifestTemplate = (contractName: string): string =>
-  `// Define and export all types for the \`${contractName}\` contract; \`contract build\` generates its \`.d.ts\`;
-// Emitted contracts re-export runtime values only from leaf files without unrelated local imports;
+  `// Define and export all types for the \`${contractName}\` contract; \`contract build\` generates its \`.d.ts\`.
+// Emitted contracts re-export runtime values only from leaf files without unrelated local imports.
 
 `;
